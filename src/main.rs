@@ -70,7 +70,7 @@ fn main() -> Result<()> {
 
     eprintln!("{} ok, {} errors", ok, errors);
 
-    println!("{}", schema.0);
+    println!("{}", serde_json::to_string_pretty(&schema.0)?);
 
     Ok(())
 
