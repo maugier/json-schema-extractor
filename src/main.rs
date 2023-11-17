@@ -1,4 +1,4 @@
-use std::{fs::File, io::{stdin, BufReader, BufRead}};
+use std::io::{stdin, BufRead};
 
 use clap::Parser;
 use serde_json::{Value, json};
@@ -7,9 +7,10 @@ use anyhow::{Result, anyhow};
 pub const OK: Result<()> = Ok(());
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, about, long_about)]
 struct Cmd {
-    file: Option<String>
+    #[arg(short,long)]
+    lines: bool,
 }
 
 struct Schema(Value);
@@ -47,24 +48,26 @@ impl Schema {
 fn main() -> Result<()> {
     let cmd = Cmd::parse();
 
-    let filename = cmd.file.as_ref()
-        .filter(|&f| f == "-");
-
-    let file: Box<dyn BufRead> = if let Some(filename) = filename {
-        let h = File::open(filename)?;
-        Box::new(BufReader::new(h))
-    } else {
-        Box::new(stdin().lock())
-    };
+    let data = stdin().lock();
 
     let mut errors = 0;
     let mut ok = 0;
     let mut schema = Schema(json!({}));
 
-    for line in file.lines() {
-        let line = line?;
-        let Ok(value) = serde_json::from_str(&line) else { errors += 1; continue };
-        schema.add(&value)?;
+    let source: Box<dyn Iterator<Item=Result<Value>>> = if cmd.lines {
+        Box::new(data.lines().map(|l| {
+            Ok(serde_json::from_str(&l?)?)
+        }))
+    } else {
+        let ds = serde_json::Deserializer::from_reader(data)
+            .into_iter()
+            .map(|r| Ok(r?));
+        Box::new(ds)
+    };
+
+    for value in source {
+        let Ok(value) = value else { errors += 1; continue };
+        let Ok(()) = schema.add(&value) else { errors += 1; continue };
         ok += 1;
     }
 
